@@ -117,7 +117,7 @@ controls.target.set (0,0,0)
 
 const cameraIntroStart = new THREE.Vector3(15, 4, 20)
 const cameraIntroEnd = new THREE.Vector3(1.9, 2.1, 0)
-const cameraIntroDuration = 4000
+const cameraIntroDuration = 2500
 let cameraIntroStartTime = null
 let cameraIntroDone = false
 
@@ -130,9 +130,14 @@ const startTime = performance.now()
 
 
 
+// the "screen" mesh is a 1.275 x 1.672 world-unit rectangle, not a square —
+// matching that aspect here keeps drawn content from being stretched onto it
+const SCREEN_W = 1024
+const SCREEN_H = 1344
+
 const screenCanvas = document.createElement('canvas')
-screenCanvas.width=1024
-screenCanvas.height=1024
+screenCanvas.width = SCREEN_W
+screenCanvas.height = SCREEN_H
 const ctx = screenCanvas.getContext('2d')
 
 const projects = [
@@ -531,7 +536,7 @@ enterOverlayEl.innerHTML = `
     <div style="width:100%; display:flex; flex-direction:column; gap:14px; font-size:clamp(14px,1.6vw,20px); color:#a8c8ff;">
       <div style="display:flex; justify-content:space-between;"><span>START</span><span style="color:#f0abfc;">[Z]</span></div>
       <div style="display:flex; justify-content:space-between;"><span>HOME</span><span style="color:#f0abfc;">[X]</span></div>
-      <div style="display:flex; justify-content:space-between;"><span>BUILT WITH</span><span style="color:#f0abfc;">[A]</span></div>
+      <div style="display:flex; justify-content:space-between;"><span>SETTINGS</span><span style="color:#f0abfc;">[A]</span></div>
       <div style="display:flex; justify-content:space-between;"><span>CONTACT</span><span style="color:#f0abfc;">[S]</span></div>
     </div>
     <div style="position:relative; width:260px; height:300px; margin-top:auto; margin-bottom:auto;">
@@ -597,21 +602,17 @@ const bootLineInterval = setInterval(() => {
   bootLineIndex++
 }, 220)
 
-function updateControlsGuide() {
-  const confirmLabels = {
-    attract: 'START',
-    projects: 'OPEN LINK',
-    skills: '--',
-    about: '--',
-    contact: 'OPEN LINK',
-  }
+const controlsGuideBySection = {
+  attract:  [{ key: 'Z', action: 'START' },  { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
+  projects: [{ key: 'Z', action: 'SELECT' }, { key: 'X', action: 'HOME' }, { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
+  skills:   [{ key: 'X', action: 'HOME' },   { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
+  about:    [{ key: 'X', action: 'HOME' },   { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
+  contact:  [{ key: 'Z', action: 'OPEN LINK' }, { key: 'X', action: 'HOME' }, { key: 'A', action: 'SETTINGS' }],
+  builtwith: [{ key: 'X', action: 'HOME' },  { key: 'S', action: 'CONTACT' }],
+}
 
-  const rows = [
-    { key: 'Z', action: confirmLabels[state.currentSection] || '--' },
-    { key: 'X', action: 'HOME' },
-    { key: 'A', action: 'BUILT WITH' },
-    { key: 'S', action: 'CONTACT' },
-  ]
+function updateControlsGuide() {
+  const rows = controlsGuideBySection[state.currentSection] || []
 
   buttonRowsEl.innerHTML = rows.map(row => `
     <div style="display:flex; align-items:center; gap:10px;">
@@ -628,46 +629,46 @@ function updateControlsGuide() {
 
 function drawAttractScreen() {
   ctx.fillStyle = '#0a0520'
-  ctx.fillRect(0, 0, 1024, 1024)
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 
   ctx.strokeStyle = '#7c3aed'
   ctx.lineWidth = 8
-  ctx.strokeRect(24, 24, 976, 976)
+  ctx.strokeRect(24, 24, 976, SCREEN_H - 48)
 
   ctx.fillStyle = '#f0abfc'
   ctx.font = `bold 45px ${FONT}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText('Filip Mihajlov', 512, 240)
+  ctx.fillText('Filip Mihajlov', 512, 315)
 
   ctx.fillStyle = '#818cf8'
   ctx.font = `26px ${FONT}`
-  ctx.fillText('SOFTWARE DEVELOPER', 512, 310)
+  ctx.fillText('SOFTWARE DEVELOPER', 512, 407)
 
   //divider
   ctx.strokeStyle = '#4c3880'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(120, 350)
-  ctx.lineTo(904, 350)
+  ctx.moveTo(120, 459)
+  ctx.lineTo(904, 459)
   ctx.stroke()
 
   //blinking press start
   if (Math.floor(Date.now() / 700) % 2 === 0) {
     ctx.fillStyle = '#f0abfc'
     ctx.font = `55px ${FONT}`
-    ctx.fillText('PRESS START', 512, 490)
+    ctx.fillText('PRESS START', 512, 643)
   }
 
   //insert coin
   ctx.fillStyle = '#4c3880'
   ctx.font = ' bold 33px Arial'
-  ctx.fillText('INSERT COIN TO CONTINUE', 512, 900)
+  ctx.fillText('INSERT COIN TO CONTINUE', 512, 1181)
 
   const dotColors = ['#a855f7', '#ec4899', '#3b82f6', '#10b981', '#f59e0b']
   dotColors.forEach((color, i) => {
     ctx.fillStyle = color
-    ctx.fillRect(340 + i * 80, 750, 24, 24)
+    ctx.fillRect(340 + i * 80, 984, 24, 24)
   })
 }
 function wrapText(text, maxWidth) {
@@ -693,45 +694,45 @@ function wrapText(text, maxWidth) {
 
 function drawBuiltWithScreen() {
   ctx.fillStyle = '#0a0520'
-  ctx.fillRect(0, 0, 1024, 1024)
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 
   ctx.strokeStyle = '#f43f5e'
   ctx.lineWidth = 8
-  ctx.strokeRect(24, 24, 976, 976)
+  ctx.strokeRect(24, 24, 976, SCREEN_H - 48)
 
   ctx.fillStyle = '#f0abfc'
-  ctx.font = `bold 45px ${FONT}`
+  ctx.font = `bold 50px ${FONT}`
   ctx.textAlign = 'center'
-  ctx.fillText('BUILT WITH', 512, 130)
+  ctx.fillText('SETTINGS', 512, 171)
 
   ctx.fillStyle = '#818cf8'
-  ctx.font = `20px ${FONT}`
-  ctx.fillText('HOW THIS WORKS', 512, 170)
+  ctx.font = `25px ${FONT}`
+  ctx.fillText('HOW THIS WORKS', 512, 223)
 
   //divider
   ctx.strokeStyle = '#4c3880'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(120, 195)
-  ctx.lineTo(904, 195)
+  ctx.moveTo(120, 256)
+  ctx.lineTo(904, 256)
   ctx.stroke()
 
   ctx.fillStyle = '#f43f5e'
-  ctx.font = `bold 22px ${FONT}`
+  ctx.font = `bold 27px ${FONT}`
 
   const stackLines = wrapText(builtWith.stack.join('   ·   '), 780)
-  const stackLineHeight = 32
+  const stackLineHeight = 42
 
   stackLines.forEach((line, i) => {
-    ctx.fillText(line, 512, 260 + i * stackLineHeight)
+    ctx.fillText(line, 512, 341 + i * stackLineHeight)
   })
 
   ctx.fillStyle = '#d4c8f0'
-  ctx.font = `23px ${FONT}`
+  ctx.font = `30px ${FONT}`
 
-  const factStartY = 420
-  const factGap = 130
-  const factLineHeight = 26
+  const factStartY = 551
+  const factGap = 171
+  const factLineHeight = 34
 
   builtWith.facts.forEach((fact, i) => {
     const factY = factStartY + i * factGap
@@ -745,80 +746,125 @@ function drawBuiltWithScreen() {
 
 function drawProjectsScreen() {
   ctx.fillStyle = '#0a0520'
-  ctx.fillRect(0, 0, 1024, 1024)
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 
   ctx.strokeStyle = '#ec4899'
   ctx.lineWidth = 8
-  ctx.strokeRect(24, 24, 976, 976)
+  ctx.strokeRect(24, 24, 976, SCREEN_H - 48)
 
   const current = state.highlightIndex
   const total = projects.length
   const project = projects[current]
 
-  ctx.fillStyle = '#4c3880'
-  ctx.font = `20px ${FONT}`
-  ctx.textAlign = 'center'
-  ctx.fillText(`< PROJECT ${current + 1} / ${total} >`, 512, 100)
-
-  ctx.strokeStyle = '#ec4899'
-  ctx.lineWidth = 4
-  ctx.strokeRect(140, 160, 744, 700)
-
-  ctx.fillStyle = '#f0abfc'
-  ctx.font = `bold 44px ${FONT}`
-  ctx.fillText(project.name, 512, 340)
-
-  ctx.fillStyle = '#818cf8'
-  ctx.font = `24px ${FONT}`
-  ctx.fillText(project.tech, 512, 400)
-
-  ctx.fillStyle = '#d4c8f0'
-  ctx.font = `23px ${FONT}`
-
-  const descLines = wrapText(project.description, 620)
-  const descLineHeight = 28
-
-  descLines.forEach((line, i) => {
-    ctx.fillText(line, 512, 500 + i * descLineHeight)
-  })
-
-  const dotSpacing = 30
-  const dotsStartX = 512 - ((total - 1) * dotSpacing) / 2
-
-  for (let i = 0; i < total; i++) {
-    ctx.fillStyle = i === current ? '#ec4899' : '#4c3880'
-    ctx.beginPath()
-    ctx.arc(dotsStartX + i * dotSpacing, 820, 8, 0, Math.PI * 2)
-    ctx.fill()
-  }
-}
-
-function drawSkillsScreen(){
-  ctx.fillStyle = '#0a0520'
-  ctx.fillRect(0,0,1024,1024)
-
-  ctx.strokeStyle = '#10b981'
-  ctx.lineWidth = 8
-  ctx.strokeRect(24,24,976,976)
-
-  ctx.textAlign = 'center'
-  ctx.fillStyle = '#e67fdb'
-  ctx.font = `bold 45px ${FONT}`
-  ctx.fillText('SKILLS', 512,110)
-
-  ctx.fillStyle = '#818cf8'
-  ctx.font = `25px ${FONT}`
-  ctx.fillText('SYSTEMS & LANGUAGES', 512,155)
+  const dividerX = 380
+  const leftCenterX = (24 + dividerX) / 2
+  const rightX = 430
+  const rightMaxWidth = 550
 
   ctx.strokeStyle = '#4c3880'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(120,175)
-  ctx.lineTo(904,175)
+  ctx.moveTo(dividerX, 24)
+  ctx.lineTo(dividerX, SCREEN_H - 24)
   ctx.stroke()
 
-  const rowHeight = 120
-  const startY = 240
+  // --- left column: index ---
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#4c3880'
+  ctx.font = `20px ${FONT}`
+  ctx.fillText('PROJECT', leftCenterX, 197)
+
+  const pulse = 12 + Math.sin(Date.now() / 500) * 6
+  ctx.shadowColor = '#a855f7'
+  ctx.shadowBlur = pulse
+  ctx.fillStyle = '#a855f7'
+  ctx.font = `bold 110px ${FONT}`
+  ctx.fillText(String(current + 1).padStart(2, '0'), leftCenterX, 394)
+  ctx.shadowBlur = 0
+
+  ctx.fillStyle = '#6c51b0'
+  ctx.font = `20px ${FONT}`
+  ctx.fillText(`of ${String(total).padStart(2, '0')}`, leftCenterX, 446)
+
+  const trackTop = 551
+  const trackHeight = 446
+  ctx.fillStyle = 'rgba(139, 92, 246, 0.18)'
+  ctx.fillRect(leftCenterX - 1.5, trackTop, 3, trackHeight)
+
+  const segmentHeight = trackHeight / total
+  ctx.fillStyle = '#ec4899'
+  ctx.fillRect(leftCenterX - 1.5, trackTop + segmentHeight * current, 3, segmentHeight)
+
+  ctx.fillStyle = '#4c3880'
+  ctx.font = `16px ${FONT}`
+  ctx.fillText('JOYSTICK ▲ ▼ BROWSE', leftCenterX, 1050)
+
+  // --- right column: project details ---
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#f0abfc'
+  ctx.font = `bold 46px ${FONT}`
+  const titleLines = wrapText(project.name, rightMaxWidth)
+  const titleLineHeight = 60
+  titleLines.forEach((line, i) => {
+    ctx.fillText(line, rightX, 289 + i * titleLineHeight)
+  })
+  const titleBottomY = 289 + (titleLines.length - 1) * titleLineHeight
+
+  const underlineWidth = 46 + Math.sin(Date.now() / 500) * 16
+  ctx.fillStyle = '#ec4899'
+  ctx.fillRect(rightX, titleBottomY + 34, underlineWidth, 4)
+
+  const tags = project.tech.split('/').map(t => t.trim())
+  let tagY = titleBottomY + 92
+  ctx.font = `20px ${FONT}`
+  tags.forEach(tag => {
+    ctx.fillStyle = '#a855f7'
+    ctx.fillRect(rightX, tagY - 16, 3, 20)
+    ctx.fillStyle = '#818cf8'
+    ctx.fillText(tag.toUpperCase(), rightX + 14, tagY)
+    tagY += 45
+  })
+
+  ctx.fillStyle = '#d4c8f0'
+  ctx.font = `22px ${FONT}`
+  const descLines = wrapText(project.description, rightMaxWidth)
+  const descLineHeight = 39
+  const descStartY = tagY + 39
+  descLines.forEach((line, i) => {
+    ctx.fillText(line, rightX, descStartY + i * descLineHeight)
+  })
+
+  ctx.fillStyle = '#ec4899'
+  ctx.font = `bold 20px ${FONT}`
+  ctx.fillText('PRESS Z TO VIEW ON GITHUB →', rightX, 1235)
+}
+
+function drawSkillsScreen(){
+  ctx.fillStyle = '#0a0520'
+  ctx.fillRect(0,0,SCREEN_W,SCREEN_H)
+
+  ctx.strokeStyle = '#10b981'
+  ctx.lineWidth = 8
+  ctx.strokeRect(24,24,976,SCREEN_H - 48)
+
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#e67fdb'
+  ctx.font = `bold 45px ${FONT}`
+  ctx.fillText('SKILLS', 512,144)
+
+  ctx.fillStyle = '#818cf8'
+  ctx.font = `25px ${FONT}`
+  ctx.fillText('SYSTEMS & LANGUAGES', 512,203)
+
+  ctx.strokeStyle = '#4c3880'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(120,230)
+  ctx.lineTo(904,230)
+  ctx.stroke()
+
+  const rowHeight = 158
+  const startY = 315
   const visibleRows = 6
 
   let scrollOffset = state.highlightIndex - Math.floor(visibleRows / 2)
@@ -834,7 +880,7 @@ function drawSkillsScreen(){
     if (skillIndex === state.highlightIndex && Math.floor(Date.now() / 700) % 2 === 0) {
       ctx.strokeStyle = skill.color
       ctx.lineWidth = 3
-      ctx.strokeRect(80, rowY - 34, 840, 66)
+      ctx.strokeRect(80, rowY - 45, 840, 87)
     }
 
     ctx.textAlign = 'left'
@@ -847,13 +893,13 @@ function drawSkillsScreen(){
 
     for(let p = 0;p<skill.max;p++){
       ctx.fillStyle = p < skill.level ? skill.color : '#2a1f45'
-      ctx.fillRect(100 + p * (pipSize + pipGap),rowY + 16,pipSize,pipSize)
+      ctx.fillRect(100 + p * (pipSize + pipGap),rowY + 21,pipSize,pipSize)
     }
 
     const barX=420
     const barWidth = 400
-    const barHeight = 24
-    const barY = rowY-20
+    const barHeight = 32
+    const barY = rowY-26
 
     ctx.strokeStyle = '#4c3880'
     ctx.lineWidth = 2
@@ -872,30 +918,30 @@ function drawSkillsScreen(){
 
 function drawAboutScreen(){
   ctx.fillStyle = '#0a0520'
-  ctx.fillRect(0,0,1024,1024)
+  ctx.fillRect(0,0,SCREEN_W,SCREEN_H)
 
   ctx.strokeStyle = '#3b82f6'
   ctx.lineWidth = 8
-  ctx.strokeRect(24,24,976,976)
+  ctx.strokeRect(24,24,976,SCREEN_H - 48)
 
   ctx.textAlign = 'center'
   ctx.fillStyle = '#f0abfc'
   ctx.font = `bold 45px ${FONT}`
-  ctx.fillText('ABOUT', 512,130)
+  ctx.fillText('ABOUT', 512,171)
 
   ctx.fillStyle = '#818cf8'
   ctx.font = `20px ${FONT}`
-  ctx.fillText('PLAYER CARD', 512,170)
+  ctx.fillText('PLAYER CARD', 512,223)
 
   ctx.strokeStyle = '#4c3880'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(120,195)
-  ctx.lineTo(904,195)
+  ctx.moveTo(120,256)
+  ctx.lineTo(904,256)
   ctx.stroke()
 
   const portraitX = 100
-  const portraitY = 220
+  const portraitY = 289
   const portraitSize = 220
 
   ctx.fillStyle = '#1a1030'
@@ -915,15 +961,15 @@ function drawAboutScreen(){
   ctx.textAlign = 'left'
   ctx.fillStyle = '#f0abfc'
   ctx.font = `bold 40px ${FONT}`
-  ctx.fillText(about.name, portraitX + portraitSize + 40, portraitY + 90)
+  ctx.fillText(about.name, portraitX + portraitSize + 40, portraitY + 118)
 
   ctx.fillStyle = '#3b82f6'
   ctx.font = `20px ${FONT}`
-  ctx.fillText(about.className, portraitX + portraitSize + 40, portraitY + 130)
+  ctx.fillText(about.className, portraitX + portraitSize + 40, portraitY + 171)
 
   const col1X = 100
   const col2X = 560
-  const rowGap = 110
+  const rowGap = 144
 
   const fields = [
     [{ label: 'SEEKING', value: about.seeking }, { label: 'LEVEL', value: about.level }],
@@ -932,7 +978,7 @@ function drawAboutScreen(){
   ]
 
   fields.forEach((row, rowIndex) => {
-    const rowY = 560 + rowIndex * rowGap
+    const rowY = 735 + rowIndex * rowGap
 
     row.forEach((field, colIndex) => {
       if (!field) return
@@ -944,49 +990,49 @@ function drawAboutScreen(){
 
       ctx.fillStyle = '#d4c8f0'
       ctx.font = `bold 28px ${FONT}`
-      ctx.fillText(field.value, x, rowY + 34)
+      ctx.fillText(field.value, x, rowY + 45)
     })
   })
 }
 
 function drawContactScreen(){
   ctx.fillStyle = '#0a0520'
-  ctx.fillRect(0,0,1024,1024)
+  ctx.fillRect(0,0,SCREEN_W,SCREEN_H)
 
   ctx.strokeStyle = '#ec4899'
   ctx.lineWidth = 8
-  ctx.strokeRect(24,24,976,976)
+  ctx.strokeRect(24,24,976,SCREEN_H - 48)
 
   ctx.textAlign = 'center'
   ctx.fillStyle = '#f0abfc'
   ctx.font = `bold 45px ${FONT}`
-  ctx.fillText('CONTACT', 512,130)
+  ctx.fillText('CONTACT', 512,171)
 
   ctx.fillStyle = '#818cf8'
   ctx.font = `20px ${FONT}`
-  ctx.fillText('GET IN TOUCH', 512,170)
+  ctx.fillText('GET IN TOUCH', 512,223)
 
   ctx.strokeStyle = '#4c3880'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(120,195)
-  ctx.lineTo(904,195)
+  ctx.moveTo(120,256)
+  ctx.lineTo(904,256)
   ctx.stroke()
 
-  const startY = 350
-  const lineGap = 110
+  const startY = 459
+  const lineGap = 144
 
   contact.forEach((line, i) => {
     const y = startY + i * lineGap
 
     if (i === state.highlightIndex && Math.floor(Date.now() / 700) % 2 === 0) {
       const paddingX = 40
-      const paddingY = 24
+      const paddingY = 32
 
-      ctx.font = `bold 30px ${FONT}`
+      ctx.font = `bold 35px ${FONT}`
       const textWidth = ctx.measureText(line.value).width
       const boxWidth = textWidth + paddingX * 2
-      const boxHeight = 34 + paddingY * 2
+      const boxHeight = 45 + paddingY * 2
       const boxX = 512 - boxWidth / 2
       const boxY = y - paddingY
 
@@ -1001,7 +1047,7 @@ function drawContactScreen(){
 
     ctx.fillStyle = '#ec4899'
     ctx.font = `bold 30px ${FONT}`
-    ctx.fillText(line.value, 512, y + 34)
+    ctx.fillText(line.value, 512, y + 45)
   })
 }
 
@@ -1028,6 +1074,7 @@ function drawScreen(section) {
 
 const screenTexture = new THREE.CanvasTexture(screenCanvas)
 screenTexture.flipY = false
+screenTexture.anisotropy = renderer.capabilities.getMaxAnisotropy()
 
 const gameOverVideo = document.createElement('video')
 gameOverVideo.src = '/videos/Game_Over.mp4'
@@ -1036,8 +1083,8 @@ gameOverVideo.preload = 'auto'
 const GAME_OVER_VOLUME = 0.25
 
 const videoCanvas = document.createElement('canvas')
-videoCanvas.width = 1024
-videoCanvas.height = 1024
+videoCanvas.width = SCREEN_W
+videoCanvas.height = SCREEN_H
 const videoCtx = videoCanvas.getContext('2d')
 const videoScreenTexture = new THREE.CanvasTexture(videoCanvas)
 videoScreenTexture.flipY = false
@@ -1046,23 +1093,24 @@ let gameOverActive = false
 
 function drawGameOverFrame() {
   videoCtx.fillStyle = '#0a0520'
-  videoCtx.fillRect(0, 0, 1024, 1024)
+  videoCtx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 
   const inset = 8
-  const size = 1024 - inset * 2
+  const w = SCREEN_W - inset * 2
+  const h = SCREEN_H - inset * 2
   const GAME_OVER_BRIGHTNESS = 0.55
   if (gameOverVideo.videoWidth > 0) {
     const vw = gameOverVideo.videoWidth
     const vh = gameOverVideo.videoHeight
-    const scale = Math.min(size / vw, size / vh)
+    const scale = Math.min(w / vw, h / vh)
     const drawW = vw * scale
     const drawH = vh * scale
-    const dx = inset + (size - drawW) / 2
-    const dy = inset + (size - drawH) / 2
+    const dx = inset + (w - drawW) / 2
+    const dy = inset + (h - drawH) / 2
 
     videoCtx.save()
     videoCtx.beginPath()
-    videoCtx.rect(inset, inset, size, size)
+    videoCtx.rect(inset, inset, w, h)
     videoCtx.clip()
     videoCtx.filter = `brightness(${GAME_OVER_BRIGHTNESS})`
     videoCtx.drawImage(gameOverVideo, dx, dy, drawW, drawH)
@@ -1072,7 +1120,7 @@ function drawGameOverFrame() {
 
   videoCtx.strokeStyle = '#f43f5e'
   videoCtx.lineWidth = 6
-  videoCtx.strokeRect(inset, inset, size, size)
+  videoCtx.strokeRect(inset, inset, w, h)
 
   videoScreenTexture.needsUpdate = true
 }
@@ -1080,7 +1128,7 @@ function drawGameOverFrame() {
 function playGameOverClip() {
   if (!screenMesh) return
   gameOverActive = true
-  screenMesh.material.map = videoScreenTexture
+  screenMesh.material.emissiveMap = videoScreenTexture
   screenMesh.material.needsUpdate = true
   gameOverVideo.currentTime = 0
   gameOverVideo.volume = GAME_OVER_VOLUME
@@ -1095,7 +1143,7 @@ function playGameOverClip() {
 gameOverVideo.addEventListener('ended', () => {
   gameOverActive = false
   if (!screenMesh) return
-  screenMesh.material.map = screenTexture
+  screenMesh.material.emissiveMap = screenTexture
   screenMesh.material.needsUpdate = true
 })
 
@@ -1123,9 +1171,15 @@ loader.load(
         console.log('Found mesh:', child.name)
 
         if(child.name === 'screen') {
-          child.material = new THREE.MeshBasicMaterial({
-            map: screenTexture
+          child.material = new THREE.MeshStandardMaterial({
+            emissive: 0xffffff,
+            emissiveMap: screenTexture,
+            emissiveIntensity: 1,
+            color: 0x000000,
+            roughness: 0.35,
+            metalness: 0,
           })
+          child.material.toneMapped = false
           screenMesh = child
           console.log('Screen texture applied')
         }
@@ -1200,7 +1254,6 @@ function animate(){
     if (progress === 1) {
       cameraIntroDone = true
       controls.enabled = true
-      playGameOverClip()
     }
   }
 
@@ -1212,7 +1265,7 @@ function animate(){
     drawGameOverFrame()
   } else if (!cameraIntroDone) {
     ctx.fillStyle = '#000000'
-    ctx.fillRect(0, 0, 1024, 1024)
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
     screenTexture.needsUpdate = true
   } else {
     drawScreen(state.currentSection)
