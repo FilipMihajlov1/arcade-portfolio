@@ -59,7 +59,7 @@ index.html
 | Joystick / drag      | Navigate highlighted item |
 | `Z`                  | Start / confirm       |
 | `X`                  | Home                  |
-| `A`                  | Built with            |
+| `A`                  | Settings              |
 | `S`                  | Contact               |
 
 ## Author
