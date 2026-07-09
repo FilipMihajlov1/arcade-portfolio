@@ -64,4 +64,4 @@ index.html
 
 ## Author
 
-Filip Mihajlov — [linkedin.com/in/filip-mihajlov](www.linkedin.com/in/filip-mihajlov-6061b7269)
+Filip Mihajlov — [linkedin.com/in/filip-mihajlov-6061b7269](www.linkedin.com/in/filip-mihajlov-6061b7269)
