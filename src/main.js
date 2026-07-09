@@ -4,6 +4,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 
 const scene = new THREE.Scene()
 scene.fog = new THREE.Fog(0x0d0821, 8, 25)
@@ -40,16 +41,67 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure=1.2
 document.body.appendChild(renderer.domElement)
 
-const composer = new EffectComposer(renderer)
-composer.addPass(new RenderPass(scene, camera))
-
+// selective bloom: render the scene twice — once with the screen blacked out (feeds
+// the bloom blur), once normally — then additively combine, so the cabinet's neon
+// still glows but the screen's text/UI stays crisp and un-bloomed
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
   0.7,   // strength — how much brightness gets added to glowing areas
   0.2,   // radius — how far the glow spreads from bright pixels
   0.75   // threshold — only pixels brighter than this (0-1) bloom at all
 )
-composer.addPass(bloomPass)
+
+const bloomComposer = new EffectComposer(renderer)
+bloomComposer.renderToScreen = false
+bloomComposer.addPass(new RenderPass(scene, camera))
+bloomComposer.addPass(bloomPass)
+
+const bloomMixPass = new ShaderPass(
+  new THREE.ShaderMaterial({
+    uniforms: {
+      baseTexture: { value: null },
+      bloomTexture: { value: bloomComposer.renderTarget2.texture },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D baseTexture;
+      uniform sampler2D bloomTexture;
+      varying vec2 vUv;
+      void main() {
+        gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+      }
+    `,
+  }),
+  'baseTexture'
+)
+bloomMixPass.needsSwap = true
+
+const composer = new EffectComposer(renderer)
+composer.addPass(new RenderPass(scene, camera))
+composer.addPass(bloomMixPass)
+
+const darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 })
+const materialBeforeDark = {}
+
+function darkenScreenForBloom(obj) {
+  if (obj === screenMesh) {
+    materialBeforeDark[obj.uuid] = obj.material
+    obj.material = darkMaterial
+  }
+}
+
+function restoreScreenMaterial(obj) {
+  if (materialBeforeDark[obj.uuid]) {
+    obj.material = materialBeforeDark[obj.uuid]
+    delete materialBeforeDark[obj.uuid]
+  }
+}
 
 
 
@@ -185,7 +237,7 @@ const contact = [
   {
     label: 'EMAIL',
     value: 'filip_2002_mihajlov@hotmail.com',
-    url: 'mailto:filip_2002_mihajlov@hotmail.com',
+    url: 'mailto:filip_2002_mihajlov@hotmail.com?subject=Lets%20work%20together',
   },
   {
     label: 'GITHUB',
@@ -385,7 +437,19 @@ window.addEventListener('pointermove', (e) => {
   if(Math.abs(deltaX) < threshold && Math.abs(deltaY) < threshold) return
 
   if(Math.abs(deltaX) > Math.abs(deltaY)) {
-    if (!cycleLockedSections.includes(state.currentSection)) {
+    if (state.currentSection === 'contact') {
+      // the 3 social links sit side by side on screen, so left/right cycles
+      // between them once you're down in that row (index 0 is the email compose block)
+      if (state.highlightIndex >= 1) {
+        const iconCount = contact.length - 1
+        const iconIndex = state.highlightIndex - 1
+        const nextIconIndex = deltaX > 0
+          ? (iconIndex + 1) % iconCount
+          : (iconIndex - 1 + iconCount) % iconCount
+        state.highlightIndex = nextIconIndex + 1
+        playSound('switch')
+      }
+    } else if (!cycleLockedSections.includes(state.currentSection)) {
       const cycle = ['projects', 'skills', 'about']
       const currentIndex = cycle.indexOf(state.currentSection)
 
@@ -402,23 +466,29 @@ window.addEventListener('pointermove', (e) => {
       console.log(state.currentSection)
     }
   }else {
-    const list = highlightableLists[state.currentSection]
-
-    if (list) {
-      const wraps = state.currentSection !== 'skills'
-
-      if (deltaY > 0) {
-        state.highlightIndex = wraps
-          ? (state.highlightIndex + 1) % list.length
-          : Math.min(state.highlightIndex + 1, list.length - 1)
-      }else{
-        state.highlightIndex = wraps
-          ? (state.highlightIndex - 1 + list.length) % list.length
-          : Math.max(state.highlightIndex - 1, 0)
-      }
-
+    if (state.currentSection === 'contact') {
+      // up/down toggles between the email compose block (0) and the icon row
+      state.highlightIndex = state.highlightIndex === 0 ? 1 : 0
       playSound('switch')
-      console.log('highlighted index: ',state.highlightIndex)
+    } else {
+      const list = highlightableLists[state.currentSection]
+
+      if (list) {
+        const wraps = state.currentSection !== 'skills'
+
+        if (deltaY > 0) {
+          state.highlightIndex = wraps
+            ? (state.highlightIndex + 1) % list.length
+            : Math.min(state.highlightIndex + 1, list.length - 1)
+        }else{
+          state.highlightIndex = wraps
+            ? (state.highlightIndex - 1 + list.length) % list.length
+            : Math.max(state.highlightIndex - 1, 0)
+        }
+
+        playSound('switch')
+        console.log('highlighted index: ',state.highlightIndex)
+      }
     }
   }
 
@@ -426,6 +496,7 @@ window.addEventListener('pointermove', (e) => {
 })
 
 const FONT = '"Geist Pixel", sans-serif'
+const TEXT_MUTED = '#a99bd6' // brighter secondary/label color — the old dim purples got lost under the CRT vignette
 
 document.fonts.ready.then(() => {
   console.log('Fonts loaded')
@@ -661,8 +732,8 @@ function drawAttractScreen() {
   }
 
   //insert coin
-  ctx.fillStyle = '#4c3880'
-  ctx.font = ' bold 33px Arial'
+  ctx.fillStyle = TEXT_MUTED
+  ctx.font = `bold 37px ${FONT}`
   ctx.fillText('INSERT COIN TO CONTINUE', 512, 1181)
 
   const dotColors = ['#a855f7', '#ec4899', '#3b82f6', '#10b981', '#f59e0b']
@@ -770,8 +841,8 @@ function drawProjectsScreen() {
 
   // --- left column: index ---
   ctx.textAlign = 'center'
-  ctx.fillStyle = '#4c3880'
-  ctx.font = `20px ${FONT}`
+  ctx.fillStyle = TEXT_MUTED
+  ctx.font = `bold 24px ${FONT}`
   ctx.fillText('PROJECT', leftCenterX, 197)
 
   const pulse = 12 + Math.sin(Date.now() / 500) * 6
@@ -782,8 +853,8 @@ function drawProjectsScreen() {
   ctx.fillText(String(current + 1).padStart(2, '0'), leftCenterX, 394)
   ctx.shadowBlur = 0
 
-  ctx.fillStyle = '#6c51b0'
-  ctx.font = `20px ${FONT}`
+  ctx.fillStyle = TEXT_MUTED
+  ctx.font = `24px ${FONT}`
   ctx.fillText(`of ${String(total).padStart(2, '0')}`, leftCenterX, 446)
 
   const trackTop = 551
@@ -795,8 +866,8 @@ function drawProjectsScreen() {
   ctx.fillStyle = '#ec4899'
   ctx.fillRect(leftCenterX - 1.5, trackTop + segmentHeight * current, 3, segmentHeight)
 
-  ctx.fillStyle = '#4c3880'
-  ctx.font = `16px ${FONT}`
+  ctx.fillStyle = TEXT_MUTED
+  ctx.font = `20px ${FONT}`
   ctx.fillText('JOYSTICK ▲ ▼ BROWSE', leftCenterX, 1050)
 
   // --- right column: project details ---
@@ -816,7 +887,7 @@ function drawProjectsScreen() {
 
   const tags = project.tech.split('/').map(t => t.trim())
   let tagY = titleBottomY + 92
-  ctx.font = `20px ${FONT}`
+  ctx.font = `24px ${FONT}`
   tags.forEach(tag => {
     ctx.fillStyle = '#a855f7'
     ctx.fillRect(rightX, tagY - 16, 3, 20)
@@ -825,18 +896,59 @@ function drawProjectsScreen() {
     tagY += 45
   })
 
-  ctx.fillStyle = '#d4c8f0'
-  ctx.font = `22px ${FONT}`
-  const descLines = wrapText(project.description, rightMaxWidth)
-  const descLineHeight = 39
-  const descStartY = tagY + 39
+  // terminal-style description panel, sized to fit its own content, flush
+  // against the divider line
+  const panelX = dividerX + 10
+  const panelTop = tagY + 16
+  const panelWidth = rightX + rightMaxWidth - panelX
+  const panelPadding = 32
+  const arrowGutter = 26
+
+  ctx.font = `30px ${FONT}`
+  const descWrapWidth = panelWidth - panelPadding * 2 - arrowGutter
+  const descLines = wrapText(project.description, descWrapWidth)
+  const descLineHeight = 42
+
+  const commentGap = 14
+  const commentLineHeight = descLineHeight
+  const panelHeight = panelPadding * 2 + commentLineHeight + commentGap + descLines.length * descLineHeight - (descLineHeight - 30)
+
+  ctx.fillStyle = '#0a0716'
+  ctx.beginPath()
+  ctx.roundRect(panelX, panelTop, panelWidth, panelHeight, 8)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(139, 92, 246, 0.25)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  ctx.fillStyle = TEXT_MUTED
+  ctx.font = `bold 25px ${FONT}`
+  ctx.fillText('/* description */', panelX + panelPadding, panelTop + panelPadding + 14)
+
+  const descStartY = panelTop + panelPadding + 14 + commentGap + 30
+  const textX = panelX + panelPadding + arrowGutter
+
+  if (Math.floor(Date.now() / 500) % 2 === 0) {
+    ctx.fillStyle = '#ec4899'
+    ctx.font = `bold 30px ${FONT}`
+    ctx.fillText('▸', panelX + panelPadding, descStartY)
+  }
+
+  ctx.fillStyle = '#a7c9f0'
+  ctx.font = `30px ${FONT}`
   descLines.forEach((line, i) => {
-    ctx.fillText(line, rightX, descStartY + i * descLineHeight)
+    ctx.fillText(line, textX, descStartY + i * descLineHeight)
   })
 
   ctx.fillStyle = '#ec4899'
   ctx.font = `bold 20px ${FONT}`
-  ctx.fillText('PRESS Z TO VIEW ON GITHUB →', rightX, 1235)
+  ctx.fillText('PRESS Z TO VIEW ON GITHUB →', rightX, panelTop + panelHeight + 55)
+}
+
+const SKILLS_HIGHLIGHT_COLOR = '#ec4899'
+
+function skillMonogram(name) {
+  return name.replace(/[^a-zA-Z]/g, '').slice(0, 2).toUpperCase()
 }
 
 function drawSkillsScreen(){
@@ -872,47 +984,68 @@ function drawSkillsScreen(){
   if (skills.length <= visibleRows) scrollOffset = 0
 
   const visibleSkills = skills.slice(scrollOffset, scrollOffset + visibleRows)
+  const badgeSize = 72
+  const badgeX = 90
+  const trackX = 290
+  const trackWidth = 460
+  const trackHeight = 12
 
   visibleSkills.forEach((skill,i) => {
     const rowY = startY + i * rowHeight
     const skillIndex = scrollOffset + i
+    const isActive = skillIndex === state.highlightIndex
 
-    if (skillIndex === state.highlightIndex && Math.floor(Date.now() / 700) % 2 === 0) {
-      ctx.strokeStyle = skill.color
-      ctx.lineWidth = 3
-      ctx.strokeRect(80, rowY - 45, 840, 87)
+    if (isActive && Math.floor(Date.now() / 700) % 2 === 0) {
+      ctx.fillStyle = 'rgba(236, 72, 153, 0.08)'
+      ctx.beginPath()
+      ctx.roundRect(70, rowY - 54, 860, 104, 12)
+      ctx.fill()
+      ctx.strokeStyle = SKILLS_HIGHLIGHT_COLOR
+      ctx.lineWidth = 1.5
+      ctx.stroke()
     }
 
+    // monogram badge
+    const badgeCenterY = rowY - 6
+    ctx.fillStyle = skill.color.trim()
+    ctx.beginPath()
+    ctx.roundRect(badgeX, badgeCenterY - badgeSize / 2, badgeSize, badgeSize, 14)
+    ctx.fill()
+
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#06040f'
+    ctx.font = `bold 28px ${FONT}`
+    ctx.fillText(skillMonogram(skill.name), badgeX + badgeSize / 2, badgeCenterY + 10)
+
+    // name
     ctx.textAlign = 'left'
-    ctx.fillStyle = skill.color
-    ctx.font = `bold 26px ${FONT}`
-    ctx.fillText(skill.name, 100 ,rowY)
+    ctx.fillStyle = '#f0e8ff'
+    ctx.font = `bold 24px ${FONT}`
+    ctx.fillText(skill.name.trim(), trackX, rowY - 20)
 
-    const pipSize= 8
-    const pipGap = 5
+    // gradient-glow track
+    const trackY = rowY - 2
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
+    ctx.beginPath()
+    ctx.roundRect(trackX, trackY, trackWidth, trackHeight, 6)
+    ctx.fill()
 
-    for(let p = 0;p<skill.max;p++){
-      ctx.fillStyle = p < skill.level ? skill.color : '#2a1f45'
-      ctx.fillRect(100 + p * (pipSize + pipGap),rowY + 21,pipSize,pipSize)
-    }
+    const fillWidth = Math.max((skill.level / skill.max) * trackWidth, trackHeight)
+    ctx.save()
+    ctx.beginPath()
+    ctx.roundRect(trackX, trackY, fillWidth, trackHeight, 6)
+    ctx.clip()
+    ctx.fillStyle = skill.color.trim()
+    ctx.fillRect(trackX, trackY, fillWidth, trackHeight)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'
+    ctx.fillRect(trackX, trackY, fillWidth, trackHeight / 2)
+    ctx.restore()
 
-    const barX=420
-    const barWidth = 400
-    const barHeight = 32
-    const barY = rowY-26
-
-    ctx.strokeStyle = '#4c3880'
-    ctx.lineWidth = 2
-     ctx.strokeRect(barX, barY, barWidth, barHeight)
-
-    const fillWidth = (skill.level / skill.max) * barWidth
-    ctx.fillStyle = skill.color
-    ctx.fillRect(barX, barY, fillWidth, barHeight)
-
+    // level readout
     ctx.textAlign = 'right'
-    ctx.fillStyle = '#d4c8f0'
-    ctx.font = `18px ${FONT}`
-    ctx.fillText(`LV${skill.level}`, 900, rowY)
+    ctx.fillStyle = TEXT_MUTED
+    ctx.font = `bold 22px ${FONT}`
+    ctx.fillText(`LV${skill.level}`, 900, rowY - 6)
   })
 }
 
@@ -984,12 +1117,12 @@ function drawAboutScreen(){
       if (!field) return
       const x = colIndex === 0 ? col1X : col2X
 
-      ctx.fillStyle = '#4c3880'
-      ctx.font = `23px ${FONT}`
+      ctx.fillStyle = TEXT_MUTED
+      ctx.font = `bold 29px ${FONT}`
       ctx.fillText(field.label, x, rowY)
 
       ctx.fillStyle = '#d4c8f0'
-      ctx.font = `bold 28px ${FONT}`
+      ctx.font = `bold 30px ${FONT}`
       ctx.fillText(field.value, x, rowY + 45)
     })
   })
@@ -1003,52 +1136,150 @@ function drawContactScreen(){
   ctx.lineWidth = 8
   ctx.strokeRect(24,24,976,SCREEN_H - 48)
 
-  ctx.textAlign = 'center'
-  ctx.fillStyle = '#f0abfc'
-  ctx.font = `bold 45px ${FONT}`
-  ctx.fillText('CONTACT', 512,171)
+  // --- terminal titlebar ---
+  const titlebarY = 24
+  const titlebarHeight = 90
 
-  ctx.fillStyle = '#818cf8'
-  ctx.font = `20px ${FONT}`
-  ctx.fillText('GET IN TOUCH', 512,223)
+  ctx.fillStyle = '#150c2c'
+  ctx.fillRect(25, titlebarY, 974, titlebarHeight)
+  ctx.strokeStyle = 'rgba(139, 92, 246, 0.25)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(24, titlebarY + titlebarHeight)
+  ctx.lineTo(999, titlebarY + titlebarHeight)
+  ctx.stroke()
 
+  const dotY = titlebarY + titlebarHeight / 2
+  const dotColors = ['#ff5f57', '#febc2e', '#28c840']
+  dotColors.forEach((color, i) => {
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(64 + i * 30, dotY, 9, 0, Math.PI * 2)
+    ctx.fill()
+  })
+
+  ctx.textAlign = 'left'
+  ctx.fillStyle = TEXT_MUTED
+  ctx.font = `bold 24px ${FONT}`
+  ctx.fillText('compose_message.eml', 165, dotY + 7)
+
+  // --- compose block (contact[0], the email link) ---
+  const emailActive = state.highlightIndex === 0
+  const composeX = 62
+  const composeWidth = 900
+  const composeY = titlebarY + titlebarHeight + 34
+  const composeHeight = 320
+
+  const bodyX = composeX + 10
+  ctx.textAlign = 'left'
+  ctx.font = `italic bold 24px ${FONT}`
+  ctx.fillStyle = TEXT_MUTED
+  ctx.fillText('// press Z to open in your email client', bodyX, composeY + 40)
+
+  ctx.font = `bold 26px ${FONT}`
+  ctx.fillStyle = '#38bdf8'
+  ctx.fillText('to:', bodyX, composeY + 100)
+  ctx.fillStyle = '#10b981'
+  ctx.fillText(contact[0].value, bodyX + 60, composeY + 100)
+
+  ctx.fillStyle = '#38bdf8'
+  ctx.fillText('subject:', bodyX, composeY + 160)
+  ctx.fillStyle = '#10b981'
+  ctx.fillText('Lets work together', bodyX + 140, composeY + 160)
+
+  ctx.fillStyle = '#d4c8f0'
+  ctx.font = `26px ${FONT}`
+  ctx.fillText('Hey Filip, I saw your portfolio and', bodyX, composeY + 250)
+  if (emailActive && Math.floor(Date.now() / 500) % 2 === 0) {
+    const cursorX = bodyX + ctx.measureText('Hey Filip, I saw your portfolio and').width + 6
+    ctx.fillStyle = '#ec4899'
+    ctx.fillRect(cursorX, composeY + 226, 12, 26)
+  }
+
+  // --- connect row: github / linkedin / instagram as CLI-style flags,
+  // anchored near the bottom of the screen ---
+  const connectRowY = SCREEN_H - 24 - 110
+
+  // divider separating the compose block from the social links, sitting
+  // just above the icon row instead of right under the compose block
+  const dividerY = connectRowY - 74
   ctx.strokeStyle = '#4c3880'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(120,256)
-  ctx.lineTo(904,256)
+  ctx.moveTo(120, dividerY)
+  ctx.lineTo(904, dividerY)
   ctx.stroke()
 
-  const startY = 459
-  const lineGap = 144
+  const connectItems = [
+    { key: 'github', label: '--github', color: '#e5e5e5' },
+    { key: 'linkedin', label: '--linkedin', color: '#0077b5' },
+    { key: 'instagram', label: '--instagram', color: '#dd2a7b' },
+  ]
+  const slotWidth = 900 / connectItems.length
+  ctx.textAlign = 'center'
 
-  contact.forEach((line, i) => {
-    const y = startY + i * lineGap
+  const connectFont = `bold 24px ${FONT}`
+  const swatchSize = 20
+  const iconGap = 12
 
-    if (i === state.highlightIndex && Math.floor(Date.now() / 700) % 2 === 0) {
-      const paddingX = 40
-      const paddingY = 32
+  connectItems.forEach((item, i) => {
+    const centerX = 62 + slotWidth * i + slotWidth / 2
+    const contactIndex = i + 1 // contact[0] is email, 1-3 are the socials
+    const isActive = state.highlightIndex === contactIndex
 
-      ctx.font = `bold 35px ${FONT}`
-      const textWidth = ctx.measureText(line.value).width
-      const boxWidth = textWidth + paddingX * 2
-      const boxHeight = 45 + paddingY * 2
-      const boxX = 512 - boxWidth / 2
-      const boxY = y - paddingY
+    ctx.font = connectFont
+    const labelWidth = ctx.measureText(item.label).width
+    const groupWidth = swatchSize + iconGap + labelWidth
+    const groupStartX = centerX - groupWidth / 2
 
-      ctx.strokeStyle = '#ec4899'
-      ctx.lineWidth = 1
-      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight)
+    if (isActive && Math.floor(Date.now() / 1000) % 2 === 0) {
+      ctx.textAlign = 'right'
+      ctx.fillStyle = '#ec4899'
+      ctx.font = `bold 32px ${FONT}`
+      ctx.fillText('▸', groupStartX - 10, connectRowY + 10)
+      ctx.font = connectFont
     }
 
-    ctx.fillStyle = '#4c3880'
-    ctx.font = `20px ${FONT}`
-    ctx.fillText(line.label, 512, y)
+    ctx.fillStyle = item.color
+    ctx.beginPath()
+    ctx.roundRect(groupStartX, connectRowY - swatchSize / 2, swatchSize, swatchSize, 5)
+    ctx.fill()
 
-    ctx.fillStyle = '#ec4899'
-    ctx.font = `bold 30px ${FONT}`
-    ctx.fillText(line.value, 512, y + 45)
+    ctx.textAlign = 'left'
+    ctx.fillStyle = isActive ? '#ffffff' : TEXT_MUTED
+    ctx.fillText(item.label, groupStartX + swatchSize + iconGap, connectRowY + 8)
+    ctx.textAlign = 'center'
   })
+}
+
+function applyScreenCrtOverlay() {
+  // faint scanlines
+  ctx.save()
+  ctx.globalAlpha = 0.06
+  ctx.fillStyle = '#000000'
+  for (let y = 0; y < SCREEN_H; y += 4) {
+    ctx.fillRect(0, y, SCREEN_W, 2)
+  }
+  ctx.restore()
+
+  // vignette
+  const vignette = ctx.createRadialGradient(
+    SCREEN_W / 2, SCREEN_H / 2, SCREEN_H * 0.35,
+    SCREEN_W / 2, SCREEN_H / 2, SCREEN_H * 0.75
+  )
+  vignette.addColorStop(0, 'rgba(0,0,0,0)')
+  vignette.addColorStop(1, 'rgba(0,0,0,0.45)')
+  ctx.fillStyle = vignette
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
+
+  // soft diagonal glass sheen
+  const sheen = ctx.createLinearGradient(0, 0, SCREEN_W, SCREEN_H)
+  sheen.addColorStop(0, 'rgba(255,255,255,0.05)')
+  sheen.addColorStop(0.15, 'rgba(255,255,255,0.02)')
+  sheen.addColorStop(0.3, 'rgba(255,255,255,0)')
+  sheen.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = sheen
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 }
 
 function drawScreen(section) {
@@ -1070,6 +1301,7 @@ function drawScreen(section) {
   if(section === 'builtwith'){
     drawBuiltWithScreen()
   }
+  applyScreenCrtOverlay()
 }
 
 const screenTexture = new THREE.CanvasTexture(screenCanvas)
@@ -1174,7 +1406,7 @@ loader.load(
           child.material = new THREE.MeshStandardMaterial({
             emissive: 0xffffff,
             emissiveMap: screenTexture,
-            emissiveIntensity: 1,
+            emissiveIntensity: 1.15,
             color: 0x000000,
             roughness: 0.35,
             metalness: 0,
@@ -1273,6 +1505,9 @@ function animate(){
   }
   updateControlsGuide()
 
+  scene.traverse(darkenScreenForBloom)
+  bloomComposer.render()
+  scene.traverse(restoreScreenMaterial)
   composer.render()
 }
 
@@ -1283,5 +1518,6 @@ window.addEventListener('resize', () =>{
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setSize(window.innerWidth, window.innerHeight)
+  bloomComposer.setSize(window.innerWidth, window.innerHeight)
 })
 
