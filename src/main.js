@@ -192,6 +192,12 @@ screenCanvas.width = SCREEN_W
 screenCanvas.height = SCREEN_H
 const ctx = screenCanvas.getContext('2d')
 
+function drawScreenBorder(color) {
+  ctx.strokeStyle = color
+  ctx.lineWidth = 8
+  ctx.strokeRect(24, 24, 976, SCREEN_H - 48)
+}
+
 const projects = [
   {
     name: 'Hotel Reservation System',
@@ -209,7 +215,7 @@ const projects = [
     name: 'Arcade Portfolio',
     tech: 'Three.js / Blender',
     description: 'Built an interactive 3D arcade cabinet as a developer portfolio, featuring a hand-modeled Blender cabinet, custom raycasting-based joystick controls, and a live Canvas2D UI rendered as a WebGL texture.',
-    url: 'https://github.com/your-username/project-three',
+    url: 'https://github.com/FilipMihajlov1/arcade-portfolio',
   },
 ]
 
@@ -234,7 +240,7 @@ const about = {
 }
 
 const contact = [
-  {
+  { 
     label: 'EMAIL',
     value: 'filip_2002_mihajlov@hotmail.com',
     url: 'mailto:filip_2002_mihajlov@hotmail.com?subject=Lets%20work%20together',
@@ -702,9 +708,7 @@ function drawAttractScreen() {
   ctx.fillStyle = '#0a0520'
   ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 
-  ctx.strokeStyle = '#7c3aed'
-  ctx.lineWidth = 8
-  ctx.strokeRect(24, 24, 976, SCREEN_H - 48)
+  drawScreenBorder('#7c3aed')
 
   ctx.fillStyle = '#f0abfc'
   ctx.font = `bold 45px ${FONT}`
@@ -767,9 +771,7 @@ function drawBuiltWithScreen() {
   ctx.fillStyle = '#0a0520'
   ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 
-  ctx.strokeStyle = '#f43f5e'
-  ctx.lineWidth = 8
-  ctx.strokeRect(24, 24, 976, SCREEN_H - 48)
+  drawScreenBorder('#f43f5e')
 
   ctx.fillStyle = '#f0abfc'
   ctx.font = `bold 50px ${FONT}`
@@ -819,9 +821,7 @@ function drawProjectsScreen() {
   ctx.fillStyle = '#0a0520'
   ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
 
-  ctx.strokeStyle = '#ec4899'
-  ctx.lineWidth = 8
-  ctx.strokeRect(24, 24, 976, SCREEN_H - 48)
+  drawScreenBorder('#ec4899')
 
   const current = state.highlightIndex
   const total = projects.length
@@ -955,9 +955,7 @@ function drawSkillsScreen(){
   ctx.fillStyle = '#0a0520'
   ctx.fillRect(0,0,SCREEN_W,SCREEN_H)
 
-  ctx.strokeStyle = '#10b981'
-  ctx.lineWidth = 8
-  ctx.strokeRect(24,24,976,SCREEN_H - 48)
+  drawScreenBorder('#10b981')
 
   ctx.textAlign = 'center'
   ctx.fillStyle = '#e67fdb'
@@ -1053,9 +1051,7 @@ function drawAboutScreen(){
   ctx.fillStyle = '#0a0520'
   ctx.fillRect(0,0,SCREEN_W,SCREEN_H)
 
-  ctx.strokeStyle = '#3b82f6'
-  ctx.lineWidth = 8
-  ctx.strokeRect(24,24,976,SCREEN_H - 48)
+  drawScreenBorder('#3b82f6')
 
   ctx.textAlign = 'center'
   ctx.fillStyle = '#f0abfc'
@@ -1132,9 +1128,7 @@ function drawContactScreen(){
   ctx.fillStyle = '#0a0520'
   ctx.fillRect(0,0,SCREEN_W,SCREEN_H)
 
-  ctx.strokeStyle = '#ec4899'
-  ctx.lineWidth = 8
-  ctx.strokeRect(24,24,976,SCREEN_H - 48)
+  drawScreenBorder('#ec4899')
 
   // --- terminal titlebar ---
   const titlebarY = 24
