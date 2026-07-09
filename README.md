@@ -2,7 +2,7 @@
 
 A developer portfolio built as an interactive 3D arcade cabinet — not a website with a 3D model bolted on, but a scene you walk up to and play. Everything you'd normally scroll past (projects, skills, about, contact) lives on the cabinet's in-world screen, navigated with the joystick and buttons like an actual arcade machine.
 
-**Live demo:** [add your Vercel URL here]
+**Live demo:** [https://arcade-portfolio-rosy.vercel.app/]
 
 ## Features
 
