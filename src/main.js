@@ -243,7 +243,7 @@ const contact = [
   { 
     label: 'EMAIL',
     value: 'filip_2002_mihajlov@hotmail.com',
-    url: 'mailto:filip_2002_mihajlov@hotmail.com?subject=Lets%20work%20together',
+    url: 'https://mail.google.com/mail/?view=cm&fs=1&to=filip_2002_mihajlov@hotmail.com&su=Lets%20work%20together',
   },
   {
     label: 'GITHUB',
