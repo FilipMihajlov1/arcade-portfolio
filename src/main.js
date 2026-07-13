@@ -6,6 +6,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 
+const CABINET_GLB_SIZE_BYTES = 18598924
+
 const scene = new THREE.Scene()
 scene.fog = new THREE.Fog(0x0d0821, 8, 25)
 scene.background = new THREE.Color(0x0d0821)
@@ -39,6 +41,9 @@ renderer.shadowMap.enabled=true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure=1.2
+// without this, a touch-drag on the canvas also scrolls/pinch-zooms the page
+// underneath it — the browser treats canvas drags as page gestures by default
+renderer.domElement.style.touchAction = 'none'
 document.body.appendChild(renderer.domElement)
 
 // selective bloom: render the scene twice — once with the screen blacked out (feeds
@@ -168,7 +173,20 @@ controls.maxDistance = 10
 controls.target.set (0,0,0)
 
 const cameraIntroStart = new THREE.Vector3(15, 4, 20)
-const cameraIntroEnd = new THREE.Vector3(1.9, 2.1, 0)
+const cameraIntroLookAt = new THREE.Vector3(0, 1.4, 0)
+const cameraIntroEndOffset = new THREE.Vector3(1.9, 0.7, 0) // desktop-tuned offset from cameraIntroLookAt
+
+// on a narrow (portrait) viewport, the same vertical FOV gives a much tighter horizontal
+// FOV, so the desktop-tuned resting distance crops the cabinet's sides out of frame —
+// pull the camera back along the same direction to compensate. Landscape/desktop aspects
+// (>=1) get a pullback of exactly 1, i.e. unchanged from the original tuned position.
+function computeCameraIntroEnd() {
+  const aspect = window.innerWidth / window.innerHeight
+  const pullback = aspect < 1 ? Math.min(1 / aspect, 2.2) : 1
+  return cameraIntroLookAt.clone().addScaledVector(cameraIntroEndOffset, pullback)
+}
+
+let cameraIntroEnd = computeCameraIntroEnd()
 const cameraIntroDuration = 2500
 let cameraIntroStartTime = null
 let cameraIntroDone = false
@@ -639,6 +657,7 @@ function enterSite() {
   setTimeout(() => {
     enterOverlayEl.remove()
     setTimeout(() => {
+      cameraIntroEnd = computeCameraIntroEnd()
       cameraIntroStartTime = performance.now()
     }, 700)
   }, 500)
@@ -1453,7 +1472,10 @@ loader.load(
     enterOverlayEl.style.display = 'flex'
   },
   (progress) => {
-    const percent = (progress.loaded / progress.total) * 100
+    // some servers omit Content-Length, leaving progress.total at 0 (Infinity% bug) —
+    // fall back to the asset's known size on disk so the bar always has a real denominator
+    const total = progress.total || CABINET_GLB_SIZE_BYTES
+    const percent = Math.min((progress.loaded / total) * 100, 100)
     const bootBarFill = document.getElementById('bootBarFill')
     const bootPercentText = document.getElementById('bootPercentText')
     if (bootBarFill) bootBarFill.style.width = `${percent}%`
