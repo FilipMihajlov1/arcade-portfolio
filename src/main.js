@@ -182,7 +182,7 @@ const cameraIntroEndOffset = new THREE.Vector3(1.9, 0.7, 0) // desktop-tuned off
 // (>=1) get a pullback of exactly 1, i.e. unchanged from the original tuned position.
 function computeCameraIntroEnd() {
   const aspect = window.innerWidth / window.innerHeight
-  const pullback = aspect < 1 ? Math.min(1 / aspect, 2.2) : 1
+  const pullback = aspect < 1 ? Math.min(1 / aspect, 1.32) : 1
   return cameraIntroLookAt.clone().addScaledVector(cameraIntroEndOffset, pullback)
 }
 
@@ -582,12 +582,23 @@ loadingOverlayEl.style.justifyContent = 'center'
 loadingOverlayEl.style.fontFamily = '"Consolas", "Courier New", monospace'
 loadingOverlayEl.style.transition = 'opacity 0.6s ease'
 
+const loadingOverlayStyleEl = document.createElement('style')
+loadingOverlayStyleEl.textContent = `
+  .boot-col { width: min(560px, 88vw); }
+  #bootLog { height: 260px; font-size: 13px; }
+  @media (max-width: 700px) {
+    #bootLog { height: 34vh; font-size: clamp(10px, 3vw, 13px); }
+    #bootPercentText { font-size: clamp(10px, 2.6vw, 12px); }
+  }
+`
+document.head.appendChild(loadingOverlayStyleEl)
+
 loadingOverlayEl.innerHTML = `
-  <div id="bootLog" style="width:560px; height:260px; overflow:hidden; color:#a8c8ff; font-size:13px; line-height:1.7;"></div>
-  <div style="width:560px; height:8px; background:#0d1b2e; border:1px solid #1c3a63; margin-top:14px;">
+  <div id="bootLog" class="boot-col" style="overflow:hidden; color:#a8c8ff; line-height:1.7;"></div>
+  <div class="boot-col" style="height:8px; background:#0d1b2e; border:1px solid #1c3a63; margin-top:14px;">
     <div id="bootBarFill" style="width:0%; height:100%; background:#4fa3ff;"></div>
   </div>
-  <div id="bootPercentText" style="width:560px; margin-top:6px; color:#5b7bb8; font-size:12px;">0%</div>
+  <div id="bootPercentText" class="boot-col" style="margin-top:6px; color:#5b7bb8; font-size:12px;">0%</div>
 `
 document.body.appendChild(loadingOverlayEl)
 
@@ -604,37 +615,58 @@ enterOverlayStyleEl.textContent = `
     60% { transform: rotate(14deg); }
     80% { transform: rotate(0deg); }
   }
+  .enter-overlay { flex-direction: row; }
+  .enter-hero { flex: 1.1; gap: 16px; }
+  .enter-prompt { margin-top: 30px; }
+  .enter-overlay-controls { flex: 1; gap: 22px; border-left: 2px solid #4c2a8f; border-top: none; padding: 14% 6% 0; }
+  .enter-stick-box { width: 260px; height: 300px; }
+  @media (max-width: 700px), (max-aspect-ratio: 4/5) {
+    /* stacked mobile layout: both blocks size to their own content (flex: none) instead
+       of splitting the viewport by a fixed ratio — on a short viewport that ratio left
+       too little room for the hero text, which then visually overlapped the block below */
+    .enter-overlay { flex-direction: column; overflow-y: auto; padding: 20px 0; justify-content: flex-start; }
+    .enter-hero { flex: none; gap: 10px; padding: 0 6%; }
+    .enter-prompt { margin-top: 14px; }
+    .enter-overlay-controls {
+      flex: none; border-left: none; border-top: 2px solid #4c2a8f;
+      padding: 20px 8% 8px; justify-content: flex-start; gap: 14px;
+    }
+    /* fixed-px children inside are positioned relative to this box's original 260x300
+       size, so shrink it uniformly via transform rather than resizing width/height —
+       resizing directly would leave the (still fixed-px) children misaligned/clipped */
+    .enter-stick-box { transform: scale(0.72); margin: -40px auto -46px; }
+  }
 `
 document.head.appendChild(enterOverlayStyleEl)
 
 const enterOverlayEl = document.createElement('div')
+enterOverlayEl.className = 'enter-overlay'
 enterOverlayEl.style.position = 'fixed'
 enterOverlayEl.style.inset = '0'
 enterOverlayEl.style.backgroundColor = '#0a0520'
 enterOverlayEl.style.zIndex = '9998'
 enterOverlayEl.style.display = 'none'
-enterOverlayEl.style.flexDirection = 'row'
 enterOverlayEl.style.fontFamily = FONT
 enterOverlayEl.style.cursor = 'pointer'
 enterOverlayEl.style.transition = 'opacity 0.5s ease'
 
 enterOverlayEl.innerHTML = `
-  <div style="flex:1.1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:16px;">
+  <div class="enter-hero" style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; min-height:0;">
     <div style="font-size:clamp(32px,5vw,64px); color:#f0abfc; font-weight:700; line-height:1.2;">FILIP<br/>MIHAJLOV</div>
     <div style="font-size:clamp(13px,1.4vw,18px); color:#818cf8; letter-spacing:3px;">ARCADE PORTFOLIO</div>
-    <div style="margin-top:30px; font-size:clamp(15px,1.6vw,20px); color:#f59e0b; letter-spacing:1px; animation:enterPromptBlink 1.2s infinite;">
+    <div class="enter-prompt" style="font-size:clamp(15px,1.6vw,20px); color:#f59e0b; letter-spacing:1px; animation:enterPromptBlink 1.2s infinite;">
       &gt; CLICK TO ENTER &lt;
     </div>
   </div>
-  <div style="flex:1; border-left:2px solid #4c2a8f; display:flex; flex-direction:column; justify-content:flex-start; align-items:center; gap:22px; padding:14% 6% 0;">
+  <div class="enter-overlay-controls" style="display:flex; flex-direction:column; justify-content:flex-start; align-items:center;">
     <div style="width:100%; font-size:clamp(13px,1.4vw,17px); color:#818cf8; letter-spacing:2px; border-bottom:1px solid #4c2a8f; padding-bottom:16px;">CONTROLS</div>
-    <div style="width:100%; display:flex; flex-direction:column; gap:14px; font-size:clamp(14px,1.6vw,20px); color:#a8c8ff;">
+    <div style="width:100%; max-width:320px; display:flex; flex-direction:column; gap:14px; font-size:clamp(14px,1.6vw,20px); color:#a8c8ff;">
       <div style="display:flex; justify-content:space-between;"><span>START</span><span style="color:#f0abfc;">[Z]</span></div>
       <div style="display:flex; justify-content:space-between;"><span>HOME</span><span style="color:#f0abfc;">[X]</span></div>
       <div style="display:flex; justify-content:space-between;"><span>SETTINGS</span><span style="color:#f0abfc;">[A]</span></div>
       <div style="display:flex; justify-content:space-between;"><span>CONTACT</span><span style="color:#f0abfc;">[S]</span></div>
     </div>
-    <div style="position:relative; width:260px; height:300px; margin-top:auto; margin-bottom:auto;">
+    <div class="enter-stick-box" style="position:relative; margin-top:auto; margin-bottom:auto;">
       <div style="position:absolute; bottom:14px; left:50%; width:150px; height:46px; margin-left:-75px; background:radial-gradient(ellipse at center, #2a1a4d, #150c2c 75%); border-radius:50%; box-shadow:0 0 0 1px rgba(124,58,237,0.3);"></div>
       <div style="position:absolute; bottom:34px; left:50%; width:18px; height:160px; margin-left:-9px; transform-origin:bottom center; animation:enterStickTilt 3.6s ease-in-out infinite;">
         <div style="width:100%; height:100%; background:linear-gradient(to top, #6d3fc9, #a855f7); border-radius:7px;"></div>
