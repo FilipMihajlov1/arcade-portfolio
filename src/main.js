@@ -27,7 +27,6 @@ const JOYSTICK_PIVOT_OFFSET_Y = 0 // the rebuilt mesh's own origin already lines
 let joystickMesh = null
 let joystickRestRotation = null
 const raycaster = new THREE.Raycaster()
-const mouse = new THREE.Vector2()
 let isDraggingJoystick = false
 let dragStartX = 0
 let dragStartY = 0
@@ -380,7 +379,7 @@ function handleButtonPress(name) {
 }
 
 const keyToButton = {
-  z: 'button1',
+  enter: 'button1',
   x: 'button2',
   a: 'button3',
   s: 'button4',
@@ -394,38 +393,68 @@ window.addEventListener('keydown', (e) => {
   }
 })
 
+// a finger's actual contact patch is much bigger than these small, tightly-packed
+// button meshes, so exact 3D raycasting alone misses a lot of taps that clearly
+// meant to hit one control over its neighbors. Rather than estimating each button's
+// "center" (tried the object's origin, its world-space AABB center, and its bounding
+// sphere center — one button's real geometry is asymmetric enough that all three
+// estimates land outside its own clickable surface, sometimes inside a neighbor's),
+// this expands outward from the actual tap point in rings and re-raycasts at each
+// step, stopping at the first real hit. It's grounded in actual raycasts the whole
+// way, so it can't be fooled by however that mesh's geometry is actually shaped.
+const TOUCH_HIT_SLOP = 46
+const TOUCH_HIT_RING_STEP = 6
+
+function hitTestScreenPoint(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect()
+  const m = new THREE.Vector2(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1
+  )
+  raycaster.setFromCamera(m, camera)
+
+  if (joystickParts.length > 0 && raycaster.intersectObjects(joystickParts).length > 0) {
+    return { type: 'joystick' }
+  }
+  const hits = raycaster.intersectObjects(Object.values(buttonMeshes))
+  if (hits.length > 0) return { type: 'button', name: hits[0].object.name }
+  return null
+}
+
+function nearestControlFallback(clientX, clientY) {
+  for (let r = TOUCH_HIT_RING_STEP; r <= TOUCH_HIT_SLOP; r += TOUCH_HIT_RING_STEP) {
+    const angleStep = TOUCH_HIT_RING_STEP / r
+    for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
+      const hit = hitTestScreenPoint(clientX + Math.cos(angle) * r, clientY + Math.sin(angle) * r)
+      if (hit) return hit
+    }
+  }
+  return null
+}
+
 window.addEventListener('pointerdown', (e) => {
   if (!hasEntered) return
   if (audioContext.state === 'suspended') {
     audioContext.resume()
   }
 
-  const rect = renderer.domElement.getBoundingClientRect()
-
-  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
-  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
-
-  raycaster.setFromCamera(mouse,camera)
-
-  if(joystickParts.length > 0){
-    const intersects = raycaster.intersectObjects(joystickParts)
-
-    if(intersects.length > 0 ){
-      isDraggingJoystick = true
-      dragStartX= e.clientX
-      dragStartY= e.clientY
-      hasTriggeredMove = false
-      controls.enabled= false
-      console.log('Joystick grabbed',performance.now())
-    }
+  let hit = hitTestScreenPoint(e.clientX, e.clientY)
+  if (!hit && e.pointerType === 'touch') {
+    hit = nearestControlFallback(e.clientX, e.clientY)
   }
 
-  const buttonHits = raycaster.intersectObjects(Object.values(buttonMeshes))
+  if (hit?.type === 'joystick') {
+    isDraggingJoystick = true
+    dragStartX = e.clientX
+    dragStartY = e.clientY
+    hasTriggeredMove = false
+    controls.enabled = false
+    console.log('Joystick grabbed', performance.now())
+  }
 
-  if (buttonHits.length > 0) {
-    const buttonName = buttonHits[0].object.name
-    console.log(buttonName, 'pressed')
-    handleButtonPress(buttonName)
+  if (hit?.type === 'button') {
+    console.log(hit.name, 'pressed')
+    handleButtonPress(hit.name)
   }
 })
 
@@ -535,7 +564,6 @@ controlsGuideEl.style.fontFamily = FONT
 controlsGuideEl.style.fontSize = '25px'
 controlsGuideEl.style.pointerEvents = 'none'
 controlsGuideEl.style.userSelect = 'none'
-controlsGuideEl.style.display = 'flex'
 controlsGuideEl.style.flexDirection = 'column'
 controlsGuideEl.style.alignItems = 'flex-end'
 controlsGuideEl.style.gap = '10px'
@@ -569,6 +597,112 @@ joystickGuideEl.innerHTML = `
   <span style="position:absolute; top:24px; left:24px; width:14px; height:14px; border-radius:50%; background:#a855f7;"></span>
 `
 controlsGuideEl.appendChild(joystickGuideEl)
+controlsGuideEl.classList.add('controls-guide-desktop')
+
+// on narrow/portrait viewports the corner legend overlaps the cabinet render, so it's
+// replaced there by a swipe-up sheet instead — same breakpoint used for the other
+// mobile layout fixes (touch_action / camera framing / enter-overlay stacking)
+const mobileControlsStyleEl = document.createElement('style')
+mobileControlsStyleEl.textContent = `
+  @keyframes mobileHintBlink { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  .controls-guide-desktop { display: flex; }
+  .mobile-controls-hint, .mobile-controls-sheet { display: none; }
+  @media (max-width: 700px), (max-aspect-ratio: 4/5) {
+    .controls-guide-desktop { display: none; }
+    .mobile-controls-hint { display: flex; }
+    .mobile-controls-sheet { display: block; }
+  }
+  .mobile-controls-hint {
+    position: fixed; left: 50%; bottom: 4px; transform: translateX(-50%);
+    width: 120px; height: 48px;
+    align-items: flex-end; justify-content: center; padding-bottom: 6px;
+    color: #a855f7; font-size: 28px; letter-spacing: 1px;
+    z-index: 40; touch-action: none; cursor: pointer; user-select: none;
+    animation: mobileHintBlink 1.8s ease-in-out infinite;
+  }
+  .mobile-controls-hint.hidden { display: none; }
+  .mobile-controls-backdrop {
+    position: fixed; inset: 0; z-index: 39; background: rgba(0,0,0,0);
+    pointer-events: none; transition: background 0.28s ease;
+  }
+  .mobile-controls-backdrop.open { display: block; background: rgba(0,0,0,0.35); pointer-events: auto; }
+  .mobile-controls-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+    background: #150c30; border-top: 1px solid #3d2a6b; border-radius: 14px 14px 0 0;
+    padding: 12px 22px 22px; touch-action: none;
+    transform: translateY(100%); transition: transform 0.28s ease;
+  }
+  .mobile-controls-sheet.open { transform: translateY(0); }
+  .mobile-controls-sheet .handle {
+    width: 36px; height: 4px; border-radius: 2px; background: #3d2a6b; margin: 0 auto 14px;
+  }
+`
+document.head.appendChild(mobileControlsStyleEl)
+
+const mobileControlsBackdropEl = document.createElement('div')
+mobileControlsBackdropEl.className = 'mobile-controls-backdrop'
+document.body.appendChild(mobileControlsBackdropEl)
+
+const mobileControlsHintEl = document.createElement('div')
+mobileControlsHintEl.className = 'mobile-controls-hint'
+mobileControlsHintEl.textContent = '▲'
+document.body.appendChild(mobileControlsHintEl)
+
+const mobileControlsSheetEl = document.createElement('div')
+mobileControlsSheetEl.className = 'mobile-controls-sheet'
+mobileControlsSheetEl.innerHTML = `
+  <div class="handle"></div>
+  <div id="mobileControlsRows" style="display:flex; flex-direction:column; gap:14px; color:${TEXT_MUTED}; font-family:${FONT}; font-size:16px;"></div>
+`
+document.body.appendChild(mobileControlsSheetEl)
+const mobileControlsRowsEl = mobileControlsSheetEl.querySelector('#mobileControlsRows')
+
+let controlsSheetOpen = false
+function setControlsSheetOpen(open) {
+  controlsSheetOpen = open
+  mobileControlsSheetEl.classList.toggle('open', open)
+  mobileControlsBackdropEl.classList.toggle('open', open)
+  mobileControlsHintEl.classList.toggle('hidden', open)
+}
+
+mobileControlsBackdropEl.addEventListener('pointerdown', (e) => {
+  e.stopPropagation()
+  setControlsSheetOpen(false)
+})
+
+function capturingPointerStart(el, onRelease) {
+  let startY = null
+  el.addEventListener('pointerdown', (e) => {
+    e.stopPropagation()
+    startY = e.clientY
+    // without this, a real swipe moves the finger outside this element's small
+    // hitbox before release, and the pointerup fires on whatever's underneath
+    // instead — capture keeps every event for this pointer targeted at el
+    el.setPointerCapture(e.pointerId)
+  })
+  el.addEventListener('pointerup', (e) => {
+    e.stopPropagation()
+    if (startY === null) return
+    const deltaY = e.clientY - startY
+    startY = null
+    onRelease(deltaY)
+  })
+}
+
+const SWIPE_THRESHOLD = 24
+
+// the hint doubles as a tap-toggle and a swipe-up-to-open target
+capturingPointerStart(mobileControlsHintEl, (deltaY) => {
+  if (Math.abs(deltaY) < SWIPE_THRESHOLD) setControlsSheetOpen(!controlsSheetOpen)
+  else if (deltaY < 0) setControlsSheetOpen(true)
+  else setControlsSheetOpen(false)
+})
+
+// the open sheet only responds to a deliberate swipe-down — a plain tap on it
+// (e.g. reading a row) shouldn't accidentally dismiss it
+capturingPointerStart(mobileControlsSheetEl, (deltaY) => {
+  if (deltaY > SWIPE_THRESHOLD) setControlsSheetOpen(false)
+})
 
 const loadingOverlayEl = document.createElement('div')
 loadingOverlayEl.style.position = 'fixed'
@@ -620,7 +754,12 @@ enterOverlayStyleEl.textContent = `
   .enter-prompt { margin-top: 30px; }
   .enter-overlay-controls { flex: 1; gap: 22px; border-left: 2px solid #4c2a8f; border-top: none; padding: 14% 6% 0; }
   .enter-stick-box { width: 260px; height: 300px; }
+  .enter-key-label { display: inline; }
+  .enter-color-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; }
   @media (max-width: 700px), (max-aspect-ratio: 4/5) {
+    /* no keyboard on mobile, so the [KEY] bracket labels are replaced by the color dot
+       alone (shown alongside the bracket on desktop) — matching the button's real color */
+    .enter-key-label { display: none; }
     /* stacked mobile layout: both blocks size to their own content (flex: none) instead
        of splitting the viewport by a fixed ratio — on a short viewport that ratio left
        too little room for the hero text, which then visually overlapped the block below */
@@ -660,11 +799,11 @@ enterOverlayEl.innerHTML = `
   </div>
   <div class="enter-overlay-controls" style="display:flex; flex-direction:column; justify-content:flex-start; align-items:center;">
     <div style="width:100%; font-size:clamp(13px,1.4vw,17px); color:#818cf8; letter-spacing:2px; border-bottom:1px solid #4c2a8f; padding-bottom:16px;">CONTROLS</div>
-    <div style="width:100%; max-width:320px; display:flex; flex-direction:column; gap:14px; font-size:clamp(14px,1.6vw,20px); color:#a8c8ff;">
-      <div style="display:flex; justify-content:space-between;"><span>START</span><span style="color:#f0abfc;">[Z]</span></div>
-      <div style="display:flex; justify-content:space-between;"><span>HOME</span><span style="color:#f0abfc;">[X]</span></div>
-      <div style="display:flex; justify-content:space-between;"><span>SETTINGS</span><span style="color:#f0abfc;">[A]</span></div>
-      <div style="display:flex; justify-content:space-between;"><span>CONTACT</span><span style="color:#f0abfc;">[S]</span></div>
+    <div style="width:100%; display:flex; flex-direction:column; gap:14px; font-size:clamp(14px,1.6vw,20px); color:#a8c8ff;">
+      <div style="display:flex; justify-content:space-between; align-items:center;"><span>START</span><span style="display:flex; align-items:center; gap:10px;"><span class="enter-key-label" style="color:#f0abfc;">[ENTER]</span><span class="enter-color-dot" style="background:#3b82f6; box-shadow:0 0 8px 1px #3b82f688;"></span></span></div>
+      <div style="display:flex; justify-content:space-between; align-items:center;"><span>HOME</span><span style="display:flex; align-items:center; gap:10px;"><span class="enter-key-label" style="color:#f0abfc;">[X]</span><span class="enter-color-dot" style="background:#ef4444; box-shadow:0 0 8px 1px #ef444488;"></span></span></div>
+      <div style="display:flex; justify-content:space-between; align-items:center;"><span>SETTINGS</span><span style="display:flex; align-items:center; gap:10px;"><span class="enter-key-label" style="color:#f0abfc;">[A]</span><span class="enter-color-dot" style="background:#22c55e; box-shadow:0 0 8px 1px #22c55e88;"></span></span></div>
+      <div style="display:flex; justify-content:space-between; align-items:center;"><span>CONTACT</span><span style="display:flex; align-items:center; gap:10px;"><span class="enter-key-label" style="color:#f0abfc;">[S]</span><span class="enter-color-dot" style="background:#f59e0b; box-shadow:0 0 8px 1px #f59e0b88;"></span></span></div>
     </div>
     <div class="enter-stick-box" style="position:relative; margin-top:auto; margin-bottom:auto;">
       <div style="position:absolute; bottom:14px; left:50%; width:150px; height:46px; margin-left:-75px; background:radial-gradient(ellipse at center, #2a1a4d, #150c2c 75%); border-radius:50%; box-shadow:0 0 0 1px rgba(124,58,237,0.3);"></div>
@@ -731,28 +870,47 @@ const bootLineInterval = setInterval(() => {
 }, 220)
 
 const controlsGuideBySection = {
-  attract:  [{ key: 'Z', action: 'START' },  { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
-  projects: [{ key: 'Z', action: 'SELECT' }, { key: 'X', action: 'HOME' }, { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
+  attract:  [{ key: '↵', action: 'START' },  { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
+  projects: [{ key: '↵', action: 'SELECT' }, { key: 'X', action: 'HOME' }, { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
   skills:   [{ key: 'X', action: 'HOME' },   { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
   about:    [{ key: 'X', action: 'HOME' },   { key: 'A', action: 'SETTINGS' }, { key: 'S', action: 'CONTACT' }],
-  contact:  [{ key: 'Z', action: 'OPEN LINK' }, { key: 'X', action: 'HOME' }, { key: 'A', action: 'SETTINGS' }],
+  contact:  [{ key: '↵', action: 'OPEN LINK' }, { key: 'X', action: 'HOME' }, { key: 'A', action: 'SETTINGS' }],
   builtwith: [{ key: 'X', action: 'HOME' },  { key: 'S', action: 'CONTACT' }],
+}
+
+// each keyboard key always maps to the same physical button regardless of section, so
+// the button's real color (set to match, in Blender) can be looked up by key alone —
+// used on mobile instead of a letter, since there's no keyboard to reference there
+const KEY_BUTTON_COLORS = { '↵': '#3b82f6', X: '#ef4444', A: '#22c55e', S: '#f59e0b' }
+
+function controlsRowHtml(row, justify, variant) {
+  const color = KEY_BUTTON_COLORS[row.key] || '#4c3880'
+  const colorDot = (size) => `<span style="
+    display:inline-block; width:${size}px; height:${size}px;
+    border-radius:50%; flex-shrink:0; background:${color}; box-shadow:0 0 8px 1px ${color}88;
+  "></span>`
+  const badge = variant === 'color'
+    ? colorDot(22)
+    : `<span style="
+        display:flex; align-items:center; justify-content:center;
+        width:36px; height:36px; border-radius:50%;
+        border:2px solid #4c3880; flex-shrink:0;
+        font-weight:700; font-size:16px;
+      ">${row.key}</span>`
+  return `
+    <div style="display:flex; align-items:center; justify-content:${justify}; gap:10px;">
+      <span>${row.action}</span>
+      ${variant === 'letter' ? colorDot(10) : ''}
+      ${badge}
+    </div>
+  `
 }
 
 function updateControlsGuide() {
   const rows = controlsGuideBySection[state.currentSection] || []
 
-  buttonRowsEl.innerHTML = rows.map(row => `
-    <div style="display:flex; align-items:center; gap:10px;">
-      <span>${row.action}</span>
-      <span style="
-        display:flex; align-items:center; justify-content:center;
-        width:36px; height:36px; border-radius:50%;
-        border:2px solid #4c3880; flex-shrink:0;
-        font-weight:700; font-size:16px;
-      ">${row.key}</span>
-    </div>
-  `).join('')
+  buttonRowsEl.innerHTML = rows.map(row => controlsRowHtml(row, 'flex-end', 'letter')).join('')
+  mobileControlsRowsEl.innerHTML = rows.map(row => controlsRowHtml(row, 'space-between', 'color')).join('')
 }
 
 function drawAttractScreen() {
@@ -1472,6 +1630,7 @@ loader.load(
         }
       }
     })
+
 
     if (joystickParts.length > 0) {
       // multi-material Blender objects get split into a wrapping Group with one mesh
