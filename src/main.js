@@ -332,6 +332,23 @@ function goToBuiltWith() {
   state.highlightIndex = 0
 }
 
+// mobile Safari/Chrome only reliably allow window.open() when it's called inside a
+// native 'click' event — not 'pointerdown'/'touchstart', which is what our raycasting
+// hit-test runs on for immediate feedback (sound, highlight). Tested and confirmed: a
+// synthetic anchor .click() is actually LESS reliable than window.open() itself, so
+// handleConfirm just records what SHOULD open, and the click listener below (which
+// fires right after pointerup for a simple tap, but never mid-joystick-drag) performs
+// the actual window.open() with the gesture trust the browser requires.
+let pendingExternalLink = null
+
+window.addEventListener('click', () => {
+  if (pendingExternalLink) {
+    const url = pendingExternalLink
+    pendingExternalLink = null
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+})
+
 function handleConfirm() {
   if (state.currentSection === 'attract') {
     playSound('insertCoin')
@@ -339,10 +356,10 @@ function handleConfirm() {
     state.highlightIndex = 0
   } else if (state.currentSection === 'projects') {
     const project = projects[state.highlightIndex]
-    window.open(project.url, '_blank')
+    pendingExternalLink = project.url
   } else if (state.currentSection === 'contact') {
     const link = contact[state.highlightIndex]
-    window.open(link.url, '_blank')
+    pendingExternalLink = link.url
   }
 }
 
@@ -390,6 +407,12 @@ window.addEventListener('keydown', (e) => {
   const buttonName = keyToButton[e.key.toLowerCase()]
   if (buttonName) {
     handleButtonPress(buttonName)
+    // a keypress never produces a following 'click' event, so flush here instead —
+    // keydown is already a fully trusted gesture on its own for opening a link
+    if (pendingExternalLink) {
+      window.open(pendingExternalLink, '_blank', 'noopener,noreferrer')
+      pendingExternalLink = null
+    }
   }
 })
 
@@ -656,6 +679,63 @@ mobileControlsSheetEl.innerHTML = `
 `
 document.body.appendChild(mobileControlsSheetEl)
 const mobileControlsRowsEl = mobileControlsSheetEl.querySelector('#mobileControlsRows')
+
+// mobile browsers can block window.open() no matter how carefully it's triggered, but a
+// genuine tap on a real <a> element is never subject to popup-blocking on any browser —
+// there's no JS call for anything to block. So instead of opening the highlighted
+// project/contact link via JS, a real anchor is positioned invisibly right over button1
+// whenever tapping it would open a link, and its href is kept in sync every frame. The
+// window.open() path above is kept only as a fallback (keyboard Enter, or a raycast
+// near-miss that falls outside this overlay's bounds).
+const externalLinkOverlayEl = document.createElement('a')
+externalLinkOverlayEl.target = '_blank'
+externalLinkOverlayEl.rel = 'noopener noreferrer'
+externalLinkOverlayEl.style.position = 'fixed'
+externalLinkOverlayEl.style.opacity = '0'
+externalLinkOverlayEl.style.pointerEvents = 'none'
+externalLinkOverlayEl.style.zIndex = '30'
+externalLinkOverlayEl.style.borderRadius = '50%'
+document.body.appendChild(externalLinkOverlayEl)
+
+// stop the tap from also reaching our window-level pointerdown/click listeners, so the
+// 3D raycast system doesn't redundantly process the same tap the anchor already handled
+externalLinkOverlayEl.addEventListener('pointerdown', (e) => e.stopPropagation())
+externalLinkOverlayEl.addEventListener('click', (e) => {
+  e.stopPropagation()
+  playSound('click')
+})
+
+const EXTERNAL_LINK_OVERLAY_SIZE = 76
+
+function updateExternalLinkOverlay() {
+  const isLinkSection = state.currentSection === 'projects' || state.currentSection === 'contact'
+  const url = !isLinkSection || !buttonMeshes.button1
+    ? null
+    : state.currentSection === 'projects'
+      ? projects[state.highlightIndex]?.url
+      : contact[state.highlightIndex]?.url
+
+  if (!url) {
+    externalLinkOverlayEl.style.pointerEvents = 'none'
+    return
+  }
+
+  if (!buttonMeshes.button1.geometry.boundingSphere) buttonMeshes.button1.geometry.computeBoundingSphere()
+  const center = buttonMeshes.button1.geometry.boundingSphere.center.clone()
+  buttonMeshes.button1.updateMatrixWorld(true)
+  center.applyMatrix4(buttonMeshes.button1.matrixWorld)
+  center.project(camera)
+  const rect = renderer.domElement.getBoundingClientRect()
+  const x = rect.left + (center.x * 0.5 + 0.5) * rect.width
+  const y = rect.top + (-center.y * 0.5 + 0.5) * rect.height
+
+  externalLinkOverlayEl.href = url
+  externalLinkOverlayEl.style.pointerEvents = 'auto'
+  externalLinkOverlayEl.style.width = EXTERNAL_LINK_OVERLAY_SIZE + 'px'
+  externalLinkOverlayEl.style.height = EXTERNAL_LINK_OVERLAY_SIZE + 'px'
+  externalLinkOverlayEl.style.left = (x - EXTERNAL_LINK_OVERLAY_SIZE / 2) + 'px'
+  externalLinkOverlayEl.style.top = (y - EXTERNAL_LINK_OVERLAY_SIZE / 2) + 'px'
+}
 
 let controlsSheetOpen = false
 function setControlsSheetOpen(open) {
@@ -1711,6 +1791,7 @@ function animate(){
     screenTexture.needsUpdate = true
   }
   updateControlsGuide()
+  updateExternalLinkOverlay()
 
   scene.traverse(darkenScreenForBloom)
   bloomComposer.render()
