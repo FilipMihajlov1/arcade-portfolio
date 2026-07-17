@@ -35,7 +35,10 @@ let hasEntered = false
 
 const renderer = new THREE.WebGLRenderer({antialias: true})
 renderer.setSize(window.innerWidth,window.innerHeight)
-renderer.setPixelRatio(window.devicePixelRatio)
+// devicePixelRatio 3 on a typical phone means rendering ~9x the pixels of ratio 1 —
+// a huge fill-rate cost on mobile GPUs for a difference barely visible on a phone
+// screen, so cap it well below native resolution instead of matching it exactly
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
 renderer.shadowMap.enabled=true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -181,7 +184,7 @@ const cameraIntroEndOffset = new THREE.Vector3(1.9, 0.7, 0) // desktop-tuned off
 // (>=1) get a pullback of exactly 1, i.e. unchanged from the original tuned position.
 function computeCameraIntroEnd() {
   const aspect = window.innerWidth / window.innerHeight
-  const pullback = aspect < 1 ? Math.min(1 / aspect, 1.32) : 1
+  const pullback = aspect < 1 ? Math.min(1 / aspect, 1.2) : 1
   return cameraIntroLookAt.clone().addScaledVector(cameraIntroEndOffset, pullback)
 }
 
@@ -386,8 +389,14 @@ loadSound('click', '/sounds/click.wav')
 loadSound('switch', '/sounds/switch.wav')
 loadSound('insertCoin', '/sounds/insert_coin.wav')
 
+// tracks when any 3D-raycast-driven button press last happened, so the external link
+// overlay can stay dormant for a beat afterward — see the cooldown check in
+// updateExternalLinkOverlay for why this matters
+let lastButtonPressTime = 0
+
 function handleButtonPress(name) {
   playSound('click')
+  lastButtonPressTime = performance.now()
 
   if (name === 'button1') handleConfirm()
   if (name === 'button2') goHome()
@@ -707,6 +716,14 @@ externalLinkOverlayEl.addEventListener('click', (e) => {
 
 const EXTERNAL_LINK_OVERLAY_SIZE = 76
 
+// on mobile, a single tap's own touchstart and its trailing synthesized 'click' are far
+// enough apart in time for at least one animation frame to land in between. Advancing
+// from attract -> projects on that touchstart (via the 3D raycast path) would otherwise
+// immediately activate this overlay right under the finger, so that same tap's trailing
+// click would land on "open project" instead of just completing the screen change.
+// Requiring a short quiet period after any raycast-driven button press closes that gap.
+const EXTERNAL_LINK_OVERLAY_COOLDOWN_MS = 400
+
 function updateExternalLinkOverlay() {
   const isLinkSection = state.currentSection === 'projects' || state.currentSection === 'contact'
   const url = !isLinkSection || !buttonMeshes.button1
@@ -730,7 +747,8 @@ function updateExternalLinkOverlay() {
   const y = rect.top + (-center.y * 0.5 + 0.5) * rect.height
 
   externalLinkOverlayEl.href = url
-  externalLinkOverlayEl.style.pointerEvents = 'auto'
+  externalLinkOverlayEl.style.pointerEvents =
+    performance.now() - lastButtonPressTime < EXTERNAL_LINK_OVERLAY_COOLDOWN_MS ? 'none' : 'auto'
   externalLinkOverlayEl.style.width = EXTERNAL_LINK_OVERLAY_SIZE + 'px'
   externalLinkOverlayEl.style.height = EXTERNAL_LINK_OVERLAY_SIZE + 'px'
   externalLinkOverlayEl.style.left = (x - EXTERNAL_LINK_OVERLAY_SIZE / 2) + 'px'
